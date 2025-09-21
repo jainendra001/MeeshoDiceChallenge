@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gifting & Bundling Prototype</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; background-color: #f4f4f4; color: #333; }
+        .container { max-width: 1200px; margin: auto; background: #fff; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        h1, h2, h3 { color: #0056b3; }
+        .section { margin-bottom: 30px; padding: 15px; border: 1px solid #ddd; border-radius: 5px; background-color: #f9f9f9; }
+        .product-list, .bundle-product-list, .cart-items { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 15px; }
+        .product-card, .bundle-card, .cart-item { background: #e9ecef; padding: 10px; border-radius: 5px; border: 1px solid #dee2e6; }
+        .product-card button, .bundle-card button, .cart-actions button { background-color: #007bff; color: white; border: none; padding: 8px 12px; border-radius: 4px; cursor: pointer; margin-top: 5px; }
+        .product-card button:hover, .bundle-card button:hover, .cart-actions button:hover { background-color: #0056b3; }
+        .bundle-mode-active { border: 2px solid #28a745; }
+        .bundle-mode-active .product-card { cursor: pointer; }
+        .bundle-mode-active .product-card.selected { background-color: #d4edda; border-color: #28a745; }
+        .cart-summary { margin-top: 20px; padding-top: 15px; border-top: 1px solid #eee; }
+        .gift-options { margin-top: 15px; padding: 10px; background-color: #e2f0ff; border-radius: 5px; }
+        .gift-options label { display: block; margin-bottom: 5px; }
+        .gift-options textarea, .gift-options input[type="checkbox"] { margin-top: 5px; }
+        .error { color: red; font-weight: bold; }
+        .success { color: green; font-weight: bold; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Gifting & Bundling Module Prototype</h1>
+
+        <div class="section">
+            <h2>Products</h2>
+            <div id="product-list" class="product-list">
+                <!-- Products will be loaded here -->
+            </div>
+        </div>
+
+        <div class="section">
+            <h2>Seller Storefront (Seller S1 Example)</h2>
+            <p>This section simulates a seller's storefront where customers can build a hamper.</p>
+            <button id="toggle-bundle-mode">Start Building Hamper (Seller S1)</button>
+            <button id="create-bundle" style="display: none;">Create Hamper</button>
+            <span id="bundle-mode-status" style="margin-left: 10px;"></span>
+            <div id="seller-s1-products" class="product-list">
+                <!-- Seller S1 products will be loaded here -->
+            </div>
+            <div id="bundle-creation-area" style="display: none; margin-top: 15px;">
+                <h3>Selected for Hamper:</h3>
+                <ul id="selected-bundle-items"></ul>
+                <label for="bundle-name">Hamper Name:</label>
+                <input type="text" id="bundle-name" value="My Custom Hamper">
+                <label for="bundle-discount-type">Discount Type:</label>
+                <select id="bundle-discount-type">
+                    <option value="FIXED">Fixed Amount</option>
+                    <option value="PERCENTAGE">Percentage</option>
+                </select>
+                <label for="bundle-discount-value">Discount Value:</label>
+                <input type="number" id="bundle-discount-value" value="10" min="0">
+            </div>
+        </div>
+
+        <div class="section">
+            <h2>Your Cart</h2>
+            <div id="cart-items" class="cart-items">
+                <!-- Cart items will be loaded here -->
+            </div>
+            <div class="cart-summary">
+                <h3>Cart Total: $<span id="cart-total">0.00</span></h3>
+                <div class="gift-options">
+                    <label>
+                        <input type="checkbox" id="is-gift-checkbox"> This is a gift
+                    </label>
+                    <div id="gift-details" style="display: none;">
+                        <label for="gift-message">Personalized Message:</label>
+                        <textarea id="gift-message" rows="3" placeholder="Enter your message"></textarea>
+                        <label>
+                            <input type="checkbox" id="gift-wrapping-checkbox"> Add Gift Wrapping
+                        </label>
+                    </div>
+                </div>
+                <button id="checkout-button">Checkout</button>
+            </div>
+        </div>
+        <div id="messages" style="margin-top: 20px;"></div>
+    </div>
+
+    <script>
+        const API_BASE_URL = 'http://127.0.0.1:5000';
+        let bundleMode = false;
+        let selectedBundleProducts = {}; // {productId: quantity}
+
+        async function fetchData(url, method = 'GET', data = null) {
+            const options = {
+                method: method,
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+            };
+            if (data) {
+                options.body = JSON.stringify(data);
+            }
+            const response = await fetch(url, options);
+            return response.json();
+        }
+
+        function showMessage(message, type = 'success') {
+            const messagesDiv = document.getElementById('messages');
+            messagesDiv.innerHTML = `<p class="${type}">${message}</p>`;
+            setTimeout(() => messagesDiv.innerHTML = '', 5000);
+        }
+
+        async function loadProducts() {
+            const products = await fetchData(`${API_BASE_URL}/products`);
+            const productListDiv = document.getElementById('product-list');
+            productListDiv.innerHTML = '';
+            products.forEach(product => {
+                const productCard = document.createElement('div');
+                productCard.className = 'product-card';
+                productCard.innerHTML = `
+                    <h3>${product.name}</h3>
+                    <p>Price: $${product.price.toFixed(2)}</p>
+                    <p>Seller: ${sellers[product.seller_id].name}</p>
+                    <p>Inventory: ${product.inventory}</p>
+                    <button onclick="addToCart('${product.id}')">Add to Cart</button>
+                `;
+                productListDiv.appendChild(productCard);
+            });
+        }
+
+        async function loadSellerProducts(sellerId) {
+            const products = await fetchData(`${API_BASE_URL}/sellers/${sellerId}/products`);
+            const sellerProductsDiv = document.getElementById('seller-s1-products');
+            sellerProductsDiv.innerHTML = '';
+            products.forEach(product => {
+                const productCard = document.createElement('div');
+                productCard.className = 'product-card';
+                productCard.id = `seller-product-${product.id}`;
+                productCard.innerHTML = `
+                    <h3>${product.name}</h3>
+                    <p>Price: $${product.price.toFixed(2)}</p>
+                    <p>Inventory: ${product.inventory}</p>
+                `;
+                productCard.addEventListener('click', () => toggleBundleProduct(product.id, productCard));
+                sellerProductsDiv.appendChild(productCard);
+            });
+        }
+
+        function toggleBundleProduct(productId, cardElement) {
+            if (!bundleMode) return;
+
+            if (selectedBundleProducts[productId]) {
+                delete selectedBundleProducts[productId];
+                cardElement.classList.remove('selected');
+            } else {
+                selectedBundleProducts[productId] = 1; // Default quantity to 1 for prototype
+                cardElement.classList.add('selected');
+            }
+            updateSelectedBundleItemsUI();
+        }
+
+        function updateSelectedBundleItemsUI() {
+            const selectedItemsUl = document.getElementById('selected-bundle-items');
+            selectedItemsUl.innerHTML = '';
+            for (const productId in selectedBundleProducts) {
+                const product = productsData.find(p => p.id === productId);
+                const li = document.createElement('li');
+                li.textContent = `${product.name} (x${selectedBundleProducts[productId]})`;
+                selectedItemsUl.appendChild(li);
+            }
+        }
+
+        async function addToCart(productId) {
+            const result = await fetchData(`${API_BASE_URL}/cart/add-item`, 'POST', { product_id: productId, quantity: 1 });
+            if (result.error) {
+                showMessage(result.error, 'error');
+            } else {
+                showMessage(`${productsData.find(p => p.id === productId).name} added to cart!`);
+                loadCart();
+                loadProducts(); // Refresh product inventory
+                loadSellerProducts('s1'); // Refresh seller product inventory
+            }
+        }
+
+        async function addBundleToCart(bundleId) {
+            const result = await fetchData(`${API_BASE_URL}/cart/add-bundle`, 'POST', { bundle_id: bundleId });
+            if (result.error) {
+                showMessage(result.error, 'error');
+            } else {
+                showMessage(`Bundle added to cart!`);
+                loadCart();
+                loadProducts(); // Refresh product inventory
+                loadSellerProducts('s1'); // Refresh seller product inventory
+            }
+        }
+
+        async function loadCart() {
+            const cartData = await fetchData(`${API_BASE_URL}/cart`);
+            const cartItemsDiv = document.getElementById('cart-items');
+            cartItemsDiv.innerHTML = '';
+            
+            if (cartData.items.length === 0) {
+                cartItemsDiv.innerHTML = '<p>Your cart is empty.</p>';
+            } else {
+                cartData.items.forEach(item => {
+                    const cartItemCard = document.createElement('div');
+                    cartItemCard.className = 'cart-item';
+                    if (item.type === 'bundle') {
+                        let bundleProductsHtml = item.products.map(p => `<li>${p.name} x ${p.quantity} ($${p.price.toFixed(2)} each)</li>`).join('');
+                        cartItemCard.innerHTML = `
+                            <h3>🎁 Bundle: ${item.name}</h3>
+                            <p>Original Price: $${item.original_price.toFixed(2)}</p>
+                            <p>Discount: ${item.discount_type === 'PERCENTAGE' ? item.discount_value + '%' : '$' + item.discount_value.toFixed(2)}</p>
+                            <p><strong>Price after discount: $${item.price_after_discount.toFixed(2)}</strong> (Savings: $${item.savings.toFixed(2)})</p>
+                            <p>Contains:</p>
+                            <ul>${bundleProductsHtml}</ul>
+                        `;
+                    } else {
+                        cartItemCard.innerHTML = `
+                            <h3>${item.name}</h3>
+                            <p>Price: $${item.price.toFixed(2)}</p>
+                            <p>Quantity: ${item.quantity}</p>
+                            <p>Subtotal: $${(item.price * item.quantity).toFixed(2)}</p>
+                        `;
+                    }
+                    cartItemsDiv.appendChild(cartItemCard);
+                });
+            }
+            document.getElementById('cart-total').textContent = cartData.total.toFixed(2);
+
+            // Update gift options display
+            document.getElementById('is-gift-checkbox').checked = cartData.is_gift;
+            document.getElementById('gift-message').value = cartData.gift_message;
+            document.getElementById('gift-wrapping-checkbox').checked = cartData.gift_wrapping;
+            document.getElementById('gift-details').style.display = cartData.is_gift ? 'block' : 'none';
+        }
+
+        async function checkout() {
+            const isGift = document.getElementById('is-gift-checkbox').checked;
+            const giftMessage = document.getElementById('gift-message').value;
+            const giftWrapping = document.getElementById('gift-wrapping-checkbox').checked;
+
+            const result = await fetchData(`${API_BASE_URL}/checkout`, 'POST', {
+                is_gift: isGift,
+                gift_message: giftMessage,
+                gift_wrapping: giftWrapping
+            });
+
+            if (result.error) {
+                showMessage(result.error, 'error');
+            } else {
+                showMessage(`Order ${result.order_id} placed successfully! Your cart has been cleared.`, 'success');
+                loadCart();
+                loadProducts(); // Refresh all products
+                loadSellerProducts('s1'); // Refresh seller products
+            }
+        }
+
+        // Event Listeners
+        document.getElementById('toggle-bundle-mode').addEventListener('click', () => {
+            bundleMode = !bundleMode;
+            const sellerProductsDiv = document.getElementById('seller-s1-products');
+            const toggleButton = document.getElementById('toggle-bundle-mode');
+            const createBundleButton = document.getElementById('create-bundle');
+            const bundleModeStatus = document.getElementById('bundle-mode-status');
+            const bundleCreationArea = document.getElementById('bundle-creation-area');
+
+            if (bundleMode) {
+                sellerProductsDiv.classList.add('bundle-mode-active');
+                toggleButton.textContent = 'Exit Bundle Mode';
+                createBundleButton.style.display = 'inline-block';
+                bundleModeStatus.textContent = ' (Select products for hamper)';
+                bundleCreationArea.style.display = 'block';
+            } else {
+                sellerProductsDiv.classList.remove('bundle-mode-active');
+                toggleButton.textContent = 'Start Building Hamper (Seller S1)';
+                createBundleButton.style.display = 'none';
+                bundleModeStatus.textContent = '';
+                bundleCreationArea.style.display = 'none';
+                selectedBundleProducts = {}; // Clear selection
+                updateSelectedBundleItemsUI();
+                // Remove 'selected' class from all product cards
+                document.querySelectorAll('.product-card.selected').forEach(card => card.classList.remove('selected'));
+            }
+        });
+
+        document.getElementById('create-bundle').addEventListener('click', async () => {
+            const bundleName = document.getElementById('bundle-name').value;
+            const discountType = document.getElementById('bundle-discount-type').value;
+            const discountValue = parseFloat(document.getElementById('bundle-discount-value').value);
+
+            if (Object.keys(selectedBundleProducts).length === 0) {
+                showMessage('Please select at least one product for the bundle.', 'error');
+                return;
+            }
+            if (!bundleName) {
+                showMessage('Please enter a name for the hamper.', 'error');
+                return;
+            }
+            if (isNaN(discountValue) || discountValue < 0) {
+                showMessage('Please enter a valid discount value.', 'error');
+                return;
+            }
+
+            const bundleItems = Object.keys(selectedBundleProducts).map(productId => ({
+                product_id: productId,
+                quantity: selectedBundleProducts[productId]
+            }));
+
+            const result = await fetchData(`${API_BASE_URL}/bundles/create`, 'POST', {
+                bundle_name: bundleName,
+                seller_id: 's1', // Assuming seller S1 for this prototype
+                discount_type: discountType,
+                discount_value: discountValue,
+                items: bundleItems
+            });
+
+            if (result.error) {
+                showMessage(result.error, 'error');
+            } else {
+                showMessage(`Hamper "${result.name}" created! Adding to cart...`);
+                await addBundleToCart(result.id);
+                // Exit bundle mode after creating and adding to cart
+                document.getElementById('toggle-bundle-mode').click();
+            }
+        });
+
+        document.getElementById('is-gift-checkbox').addEventListener('change', (event) => {
+            document.getElementById('gift-details').style.display = event.target.checked ? 'block' : 'none';
+        });
+
+        document.getElementById('checkout-button').addEventListener('click', checkout);
+
+        // Initial load
+        let productsData = []; // To store all products for easy lookup
+        async function init() {
+            productsData = await fetchData(`${API_BASE_URL}/products`);
+            loadProducts();
+            loadSellerProducts('s1');
+            loadCart();
+        }
+        init();
+
+        // Global sellers data for frontend lookup
+        const sellers = {
+            "s1": {"id": "s1", "name": "Luxury Goods Inc."},
+            "s2": {"id": "s2", "name": "Gourmet Delights"},
+            "s3": {"id": "s3", "name": "Tech Gadgets Co."},
+        };
+    </script>
+</body>
+</html>

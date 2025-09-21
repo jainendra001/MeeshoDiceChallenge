@@ -1,175 +1,152 @@
-# Meesho Guide AI - Conversational Shopping Assistant
+# Gifting & Bundling Module Prototype
 
-A conversational AI assistant that helps users find products, answer questions, and provide personalized shopping recommendations.
+This project implements a prototype for an "Enhanced Gifting & Bundling Module" as described in the task. It consists of a simple Flask backend and a basic HTML/JavaScript frontend to demonstrate the core functionalities.
 
-## Architecture
+## Features
+
+### Gifting
+
+- At checkout, a "This is a gift" checkbox appears.
+- If selected, options to add a personalized message and purchase gift wrapping are revealed.
+
+### Seller-Centric Bundling ("Build a Hamper")
+
+- A "Create a Bundle" feature is available on a simulated seller's storefront (Seller S1).
+- Customers can select multiple products from that single seller, which are then grouped into a virtual "hamper."
+- This hamper is added to the cart as a single line item with a potential bundle discount.
+- The system simulates atomic inventory checks for all items within a bundle before adding it to the cart.
+- The cart visually groups bundled items together and displays the applied savings clearly.
+
+## Application Design
 
 ### High-Level Design (HLD)
 
-```
-┌─────────────┐     ┌───────────────┐     ┌──────────────┐
-│  Web/Mobile │     │ FastAPI Server │     │  Vector DB   │
-│  Interface  │<--->│  WebSocket    │<--->│  (Pinecone)  │
-└─────────────┘     └───────────────┘     └──────────────┘
-                           ↕                      ↕
-                    ┌───────────────┐     ┌──────────────┐
-                    │   RAG Engine  │<--->│    LLM API   │
-                    └───────────────┘     └──────────────┘
-```
+1.  **Cart & Checkout Microservices (Simulated by Flask `app.py`):**
 
-#### Components
+    - Modified to support a "gift" flag and associated metadata (message, wrapping preference).
+    - Handles adding individual items and bundles to the cart.
+    - Manages the checkout process, including gift options.
 
-1. **Chat Interface**
+2.  **Bundling Service (Integrated into Flask `app.py`):**
 
-   - WebSocket-based real-time communication
-   - Responsive web interface
-   - Product suggestion sidebar
+    - Manages the logic for creating, pricing, and validating dynamic, user-generated bundles.
+    - Exposes API endpoints for bundle creation and adding bundles to the cart.
 
-2. **FastAPI Server**
-
-   - WebSocket endpoint for real-time chat
-   - Session management
-   - Request handling and routing
-
-3. **RAG (Retrieval-Augmented Generation) Engine**
-
-   - Query understanding
-   - Context retrieval from Vector DB
-   - Response generation with LLM
-
-4. **Vector Database (Pinecone)**
-   - Stores product embeddings
-   - Enables semantic search
-   - Fast similarity matching
+3.  **Order Management System (OMS) (Simulated in Flask `checkout` endpoint):**
+    - Updated to recognize a bundled item.
+    - Generates a single fulfillment request to the seller and logistics partner, ensuring all items in the bundle are packed and shipped together (simulated by clearing the cart and returning an order ID).
 
 ### Low-Level Design (LLD)
 
-#### Technology Stack
+#### Database Schema (In-memory representation in `app.py`):
 
-- Backend: Python with FastAPI
-- Embeddings: Sentence-Transformers (all-MiniLM-L6-v2)
-- Vector DB: Pinecone
-- LLM: ChatOpenAI
-- Frontend: HTML/CSS/JS with WebSocket
+- **`products` (Dictionary):** Simulates a products table with `id`, `name`, `price`, `seller_id`, `inventory`.
+- **`sellers` (Dictionary):** Simulates a sellers table with `id`, `name`.
+- **`cart` (Dictionary):** Represents the current user's cart with `items`, `total`, `is_gift`, `gift_message`, `gift_wrapping`.
+- **`bundles` (Dictionary):** Simulates a new `bundles` table.
+  - `bundle_id` (PK)
+  - `seller_id` (FK)
+  - `bundle_name` (VARCHAR)
+  - `discount_type` (ENUM: 'PERCENTAGE', 'FIXED')
+  - `discount_value` (DECIMAL)
+  - `items`: A list of dictionaries, each containing `product_id` (FK) and `quantity`, simulating a `bundle_items` mapping table.
 
-#### Data Flow
+#### API (Implemented in Flask `app.py`):
 
-1. **Data Ingestion**
+- `GET /products`: Returns a list of all available products.
+- `GET /sellers/<seller_id>/products`: Returns products belonging to a specific seller.
+- `POST /bundles/create`:
+  - **Purpose:** For sellers (or customers in bundle mode) to create a new bundle.
+  - **Request Body:** `{ "bundle_name": "string", "seller_id": "string", "discount_type": "ENUM", "discount_value": "decimal", "items": [{ "product_id": "string", "quantity": "integer" }] }`
+  - **Validation:** Ensures all products in the bundle belong to the specified `seller_id`.
+  - **Response:** The created bundle object.
+- `POST /cart/add-item`:
+  - **Purpose:** Adds a single product to the cart.
+  - **Request Body:** `{ "product_id": "string", "quantity": "integer" }`
+  - **Inventory Check:** Checks product inventory.
+- `POST /cart/add-bundle`:
+  - **Purpose:** Adds a created bundle to the cart.
+  - **Request Body:** `{ "bundle_id": "string" }`
+  - **Atomic Inventory Checks:** Wraps inventory checks for all constituent products within a single logical transaction (simulated by `temp_inventory` in the prototype) to ensure all items are available before confirming the addition to the cart.
+- `GET /cart`: Returns the current cart contents, including enhanced details for bundled items.
+- `POST /checkout`:
+  - **Purpose:** Simulates the checkout process.
+  - **Request Body:** `{ "is_gift": "boolean", "gift_message": "string", "gift_wrapping": "boolean" }`
+  - **Functionality:** Updates cart with gift options, simulates order creation, and clears the cart.
 
-   ```
-   Product Data → Text Chunking → Embedding Generation → Vector DB Storage
-   ```
+#### Frontend (Implemented in `static/index.html` using HTML, CSS, and JavaScript):
 
-2. **Query Processing**
+- **Seller's Store Page UI:** Features a "Start Building Hamper" button.
+  - Clicking this button enters "bundle mode," highlighting seller-specific products.
+  - Users can select multiple products to form a hamper.
+  - A "Create Hamper" button becomes visible, along with input fields for bundle name, discount type, and discount value.
+- **Cart Display:**
+  - Visually groups bundled items together.
+  - Displays the applied savings clearly for bundles.
+  - Includes the "This is a gift" checkbox at checkout, which reveals fields for a personalized message and gift wrapping.
 
-   ```
-   User Query → Query Embedding → Vector Search → Context Retrieval → LLM Response
-   ```
+## Setup and Running the Prototype
 
-3. **Response Generation**
-   ```
-   Context + Query + History → Prompt Construction → LLM → Structured Response
-   ```
+1.  **Navigate to the project directory:**
 
-## Setup and Installation
+    ```bash
+    cd gifting_bundling_module
+    ```
 
-1. Create a virtual environment:
+2.  **Activate the virtual environment:**
 
-   ```bash
-   python -m venv venv
-   source venv/bin/activate  # Linux/Mac
-   ```
+    ```bash
+    source venv/bin/activate
+    ```
 
-2. Install dependencies:
+3.  **Install dependencies:**
 
-   ```bash
-   pip install -r requirements.txt
-   ```
+    ```bash
+    pip install -r requirements.txt
+    ```
 
-3. Set up environment variables:
+4.  **Run the Flask application:**
 
-   ```bash
-   cp .env.example .env
-   # Edit .env with your API keys and configuration
-   ```
+    ```bash
+    flask run
+    ```
 
-4. Run data ingestion:
+    The application will start on `http://127.0.0.1:5000`.
 
-   ```bash
-   python -m src.data_ingestion.ingest
-   ```
+5.  **Open the prototype in your browser:**
+    Navigate to `http://127.0.0.1:5000` in your web browser.
 
-5. Start the server:
+## How to Use the Prototype
 
-   ```bash
-   uvicorn src.api.main:app --reload
-   ```
+### Adding Regular Products to Cart
 
-6. Open the chat interface:
-   ```bash
-   python -m http.server 5000 --directory src/chat_interface/static
-   ```
+- On the main page, you'll see a list of "Products".
+- Click "Add to Cart" next to any product to add it to your cart.
+- The cart section at the bottom will update.
 
-## API Documentation
+### Gifting Options
 
-### WebSocket Endpoint
+- In the "Your Cart" section, check the "This is a gift" checkbox.
+- Input fields for "Personalized Message" and "Add Gift Wrapping" will appear.
+- Enter a message and/or check the gift wrapping option.
+- Click "Checkout" to simulate placing the order with these gift options.
 
-```
-ws://localhost:8000/ws/chat/{user_id}
-```
+### Creating and Adding a Bundle (Hamper)
 
-#### Message Format
+1.  **Enter Bundle Mode:** In the "Seller Storefront (Seller S1 Example)" section, click the "Start Building Hamper (Seller S1)" button.
+    - The product cards for Seller S1 will be highlighted.
+    - A "Create Hamper" button and bundle creation fields will appear.
+2.  **Select Products:** Click on "Luxury Watch" and "Designer Handbag" within the Seller S1 section. They will be highlighted, and their names will appear in the "Selected for Hamper" list.
+3.  **Configure Bundle:**
+    - Enter a "Hamper Name" (e.g., "Luxury Duo Hamper").
+    - Choose a "Discount Type" (e.g., "PERCENTAGE").
+    - Enter a "Discount Value" (e.g., "10" for 10% or $10 fixed).
+4.  **Create and Add to Cart:** Click the "Create Hamper" button.
+    - The bundle will be created and automatically added to your cart as a single line item.
+    - The cart display will show the bundle, its contents, original price, discount, and final price.
+    - Bundle mode will automatically exit.
 
-```json
-// Client to Server
-{
-    "message": "Find me blue floral sarees for a wedding"
-}
+### Checkout
 
-// Server to Client
-{
-    "response": "I found some beautiful blue floral sarees...",
-    "suggested_products": [
-        {
-            "name": "Product Name",
-            "price": 999,
-            "url": "/product/123"
-        }
-    ]
-}
-```
-
-## Future Improvements
-
-1. **Enhanced Context Understanding**
-
-   - User preference learning
-   - Shopping history integration
-   - Category-specific handling
-
-2. **Performance Optimization**
-
-   - Caching frequent queries
-   - Batch processing for embeddings
-   - Response streaming
-
-3. **Features**
-
-   - Multi-language support
-   - Voice interface
-   - Image-based search
-   - Personalized recommendations
-
-4. **Security**
-   - Authentication
-   - Rate limiting
-   - Input validation
-   - Data encryption
-
-## Contributing
-
-1. Fork the repository
-2. Create a feature branch
-3. Commit your changes
-4. Push to the branch
-5. Create a Pull Request
+- After adding items and/or bundles, click the "Checkout" button in the "Your Cart" section.
+- A success message will appear, and your cart will be cleared.
