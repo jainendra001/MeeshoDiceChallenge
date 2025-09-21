@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Meesho Guide AI</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+        }
+        .chat-container {
+            max-width: 800px;
+            margin: 0 auto;
+            display: grid;
+            grid-template-columns: 1fr 300px;
+            gap: 20px;
+        }
+        .chat-window {
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            padding: 20px;
+            height: 500px;
+            display: flex;
+            flex-direction: column;
+        }
+        .chat-messages {
+            flex-grow: 1;
+            overflow-y: auto;
+            margin-bottom: 20px;
+        }
+        .message {
+            margin: 10px 0;
+            padding: 10px;
+            border-radius: 8px;
+        }
+        .user-message {
+            background-color: #e3f2fd;
+            margin-left: 20%;
+        }
+        .assistant-message {
+            background-color: #f5f5f5;
+            margin-right: 20%;
+        }
+        .chat-input {
+            display: flex;
+            gap: 10px;
+        }
+        input {
+            flex-grow: 1;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        button {
+            padding: 10px 20px;
+            background-color: #1976d2;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #1565c0;
+        }
+        .product-suggestions {
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            padding: 20px;
+        }
+        .product-card {
+            border: 1px solid #eee;
+            border-radius: 4px;
+            padding: 10px;
+            margin-bottom: 10px;
+        }
+        .product-card h3 {
+            margin: 0 0 10px 0;
+        }
+        .product-card .price {
+            color: #1976d2;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <div class="chat-container">
+        <div class="chat-window">
+            <div class="chat-messages" id="chatMessages"></div>
+            <div class="chat-input">
+                <input type="text" id="messageInput" placeholder="Ask me anything about products...">
+                <button onclick="sendMessage()">Send</button>
+            </div>
+        </div>
+        <div class="product-suggestions" id="productSuggestions">
+            <h2>Suggested Products</h2>
+            <div id="suggestionsList"></div>
+        </div>
+    </div>
+
+    <script>
+        let ws;
+        const userId = 'user_' + Math.random().toString(36).substr(2, 9);
+
+        function connect() {
+            ws = new WebSocket(`ws://localhost:8000/ws/chat/${userId}`);
+            
+            ws.onmessage = function(event) {
+                const data = JSON.parse(event.data);
+                displayMessage('assistant', data.response);
+                displaySuggestions(data.suggested_products);
+            };
+
+            ws.onclose = function() {
+                setTimeout(connect, 1000);
+            };
+        }
+
+        function sendMessage() {
+            const input = document.getElementById('messageInput');
+            const message = input.value.trim();
+            
+            if (message && ws.readyState === WebSocket.OPEN) {
+                displayMessage('user', message);
+                ws.send(JSON.stringify({ message: message }));
+                input.value = '';
+            }
+        }
+
+        function displayMessage(role, content) {
+            const messagesDiv = document.getElementById('chatMessages');
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${role}-message`;
+            messageDiv.textContent = content;
+            messagesDiv.appendChild(messageDiv);
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        }
+
+        function displaySuggestions(products) {
+            const suggestionsDiv = document.getElementById('suggestionsList');
+            suggestionsDiv.innerHTML = '';
+            
+            products.forEach(product => {
+                const productDiv = document.createElement('div');
+                productDiv.className = 'product-card';
+                productDiv.innerHTML = `
+                    <h3>${product.name}</h3>
+                    <p class="price">₹${product.price}</p>
+                    <a href="${product.url}" target="_blank">View Details</a>
+                `;
+                suggestionsDiv.appendChild(productDiv);
+            });
+        }
+
+        // Connect when the page loads
+        connect();
+
+        // Handle Enter key in input
+        document.getElementById('messageInput').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                sendMessage();
+            }
+        });
+    </script>
+</body>
+</html>

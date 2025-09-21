@@ -1,108 +1,175 @@
-# Immersive Commerce Engine
+# Meesho Guide AI - Conversational Shopping Assistant
 
-A comprehensive 3D and AR-enabled e-commerce platform that enhances the online shopping experience through immersive product visualization.
+A conversational AI assistant that helps users find products, answer questions, and provide personalized shopping recommendations.
 
-## Design Documentation
-
-### Overview
-
-The Immersive Commerce Engine enables users to view and interact with products in 3D and AR, providing a more engaging and confident shopping experience. Sellers can upload 3D models of their products, while shoppers can view products from all angles and try them virtually.
+## Architecture
 
 ### High-Level Design (HLD)
 
-#### System Architecture
-
 ```
-+------------------+     +----------------------+     +------------------+
-|   Client Apps    |     | 3D Asset Management |     |   Cloud Storage |
-| (Web/Mobile/AR)  |<--->|       Service       |<--->|    (AWS S3)     |
-+------------------+     +----------------------+     +------------------+
-         ^                         ^                         ^
-         |                         |                         |
-         v                         v                         v
-+------------------+     +----------------------+     +------------------+
-|   CDN Layer      |     |   Authentication &   |     |   Analytics &   |
-| (CloudFront)     |     |   Authorization      |     |   Monitoring   |
-+------------------+     +----------------------+     +------------------+
+┌─────────────┐     ┌───────────────┐     ┌──────────────┐
+│  Web/Mobile │     │ FastAPI Server │     │  Vector DB   │
+│  Interface  │<--->│  WebSocket    │<--->│  (Pinecone)  │
+└─────────────┘     └───────────────┘     └──────────────┘
+                           ↕                      ↕
+                    ┌───────────────┐     ┌──────────────┐
+                    │   RAG Engine  │<--->│    LLM API   │
+                    └───────────────┘     └──────────────┘
 ```
 
-#### Core Components
+#### Components
 
-1. **Frontend Applications**
+1. **Chat Interface**
 
-   - Web interface with 3D viewer
-   - Mobile apps with AR capabilities
-   - Progressive Web App support
+   - WebSocket-based real-time communication
+   - Responsive web interface
+   - Product suggestion sidebar
 
-2. **Backend Services**
+2. **FastAPI Server**
 
-   - 3D Asset Management Service
-   - Authentication Service
-   - Analytics Service
+   - WebSocket endpoint for real-time chat
+   - Session management
+   - Request handling and routing
 
-3. **Infrastructure**
-   - Cloud Storage for 3D models
-   - CDN for global content delivery
-   - Load balancers for scalability
+3. **RAG (Retrieval-Augmented Generation) Engine**
 
-For detailed technical documentation, architecture, and integration guide, please see [DESIGN.md](DESIGN.md).
+   - Query understanding
+   - Context retrieval from Vector DB
+   - Response generation with LLM
 
-## Quick Start Guide
+4. **Vector Database (Pinecone)**
+   - Stores product embeddings
+   - Enables semantic search
+   - Fast similarity matching
 
-### 1. 3D Asset Management Service
+### Low-Level Design (LLD)
 
-A Django-based backend service that handles 3D model storage and retrieval.
+#### Technology Stack
 
-#### Setup and Running
+- Backend: Python with FastAPI
+- Embeddings: Sentence-Transformers (all-MiniLM-L6-v2)
+- Vector DB: Pinecone
+- LLM: ChatOpenAI
+- Frontend: HTML/CSS/JS with WebSocket
 
-```bash
-cd 3d-asset-management-service
-source venv/bin/activate
-python manage.py migrate
-python manage.py runserver
+#### Data Flow
+
+1. **Data Ingestion**
+
+   ```
+   Product Data → Text Chunking → Embedding Generation → Vector DB Storage
+   ```
+
+2. **Query Processing**
+
+   ```
+   User Query → Query Embedding → Vector Search → Context Retrieval → LLM Response
+   ```
+
+3. **Response Generation**
+   ```
+   Context + Query + History → Prompt Construction → LLM → Structured Response
+   ```
+
+## Setup and Installation
+
+1. Create a virtual environment:
+
+   ```bash
+   python -m venv venv
+   source venv/bin/activate  # Linux/Mac
+   ```
+
+2. Install dependencies:
+
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+3. Set up environment variables:
+
+   ```bash
+   cp .env.example .env
+   # Edit .env with your API keys and configuration
+   ```
+
+4. Run data ingestion:
+
+   ```bash
+   python -m src.data_ingestion.ingest
+   ```
+
+5. Start the server:
+
+   ```bash
+   uvicorn src.api.main:app --reload
+   ```
+
+6. Open the chat interface:
+   ```bash
+   python -m http.server 5000 --directory src/chat_interface/static
+   ```
+
+## API Documentation
+
+### WebSocket Endpoint
+
+```
+ws://localhost:8000/ws/chat/{user_id}
 ```
 
-The service will run on http://localhost:8000
+#### Message Format
 
-API Endpoints:
+```json
+// Client to Server
+{
+    "message": "Find me blue floral sarees for a wedding"
+}
 
-- GET /api/assets/3d/ - List all 3D assets
-- POST /api/assets/3d/ - Upload a new 3D asset
-- GET /api/assets/3d/{id}/ - Get specific 3D asset
-- PUT /api/assets/3d/{id}/ - Update 3D asset
-- DELETE /api/assets/3d/{id}/ - Delete 3D asset
-
-### 2. Client-Side Implementation
-
-A web-based 3D model viewer using Google's <model-viewer> web component.
-
-#### Running
-
-Simply open the index.html file in a modern web browser, or serve it using a local server:
-
-```bash
-cd client-side-implementation
-python -m http.server 5000
+// Server to Client
+{
+    "response": "I found some beautiful blue floral sarees...",
+    "suggested_products": [
+        {
+            "name": "Product Name",
+            "price": 999,
+            "url": "/product/123"
+        }
+    ]
+}
 ```
 
-The client will run on http://localhost:5000
+## Future Improvements
 
-## Security Considerations
+1. **Enhanced Context Understanding**
 
-- This is a prototype and includes development-only settings
-- In production:
-  - Remove CORS_ALLOW_ALL_ORIGINS
-  - Implement proper authentication
-  - Use environment variables for sensitive data
-  - Implement input validation and sanitization
-  - Set up proper SSL/TLS
-  - Implement rate limiting
+   - User preference learning
+   - Shopping history integration
+   - Category-specific handling
 
-## CDN Integration Notes
+2. **Performance Optimization**
 
-- For production:
-  - Use a CDN like Amazon CloudFront or Cloudflare
-  - Configure proper caching headers
-  - Use edge locations for global distribution
-  - Implement cache invalidation strategy
-  - Consider using signed URLs for protected content
+   - Caching frequent queries
+   - Batch processing for embeddings
+   - Response streaming
+
+3. **Features**
+
+   - Multi-language support
+   - Voice interface
+   - Image-based search
+   - Personalized recommendations
+
+4. **Security**
+   - Authentication
+   - Rate limiting
+   - Input validation
+   - Data encryption
+
+## Contributing
+
+1. Fork the repository
+2. Create a feature branch
+3. Commit your changes
+4. Push to the branch
+5. Create a Pull Request
